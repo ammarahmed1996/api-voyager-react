@@ -1,9 +1,12 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { OpenApiSpec, OperationObject, ResponseObject, isReferenceObject, MediaTypeObject, SchemaObject, ExampleObject } from '@/types/openapi/index';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import JsonViewer from './JsonViewer';
 import { resolveReference, deepResolveRefs } from './openapiUtils';
+import { Button } from '@/components/ui/button';
+import SchemaTreeView from './SchemaTreeView';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface ResponsesTabContentProps {
   operation: OperationObject;
@@ -48,7 +51,6 @@ const ResponsesTabContent: React.FC<ResponsesTabContentProps> = ({ operation, op
             resolvedSchema = deepResolveRefs(resolvedSchema, openApiSpec);
         }
 
-
         return (
           <Card key={statusCode}>
             <CardHeader>
@@ -58,8 +60,30 @@ const ResponsesTabContent: React.FC<ResponsesTabContentProps> = ({ operation, op
               <CardDescription>{responseObject.description}</CardDescription>
             </CardHeader>
             <CardContent>
-              {exampleValue !== undefined && <JsonViewer json={exampleValue} title="Example Response Body" />}
-              {resolvedSchema && exampleValue === undefined && <JsonViewer json={resolvedSchema} title="Response Schema" />}
+              {(exampleValue !== undefined || resolvedSchema) && (
+                <Tabs defaultValue="example" className="w-full">
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="example">Example</TabsTrigger>
+                    <TabsTrigger value="schema">Schema</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="example">
+                    {exampleValue !== undefined ? (
+                      <JsonViewer json={exampleValue} title="Example Response Body" />
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No example provided for this response content.</p>
+                    )}
+                  </TabsContent>
+                  <TabsContent value="schema">
+                    {resolvedSchema ? (
+                      <div className="mt-4">
+                        <SchemaTreeView schema={resolvedSchema} name="Response" isExpanded={true} />
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No schema provided for this response content.</p>
+                    )}
+                  </TabsContent>
+                </Tabs>
+              )}
               {exampleValue === undefined && !resolvedSchema && <p className="text-sm text-muted-foreground">No example or schema provided for this response content.</p>}
             </CardContent>
           </Card>
@@ -70,4 +94,3 @@ const ResponsesTabContent: React.FC<ResponsesTabContentProps> = ({ operation, op
 };
 
 export default ResponsesTabContent;
-

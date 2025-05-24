@@ -4,6 +4,8 @@ import { OpenApiSpec, OperationObject, SchemaObject, isReferenceObject, RequestB
 import JsonViewer from './JsonViewer';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { resolveReference, deepResolveRefs } from './openapiUtils';
+import SchemaTreeView from './SchemaTreeView';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface SchemaTabContentProps {
   operation: OperationObject;
@@ -24,7 +26,6 @@ const SchemaTabContent: React.FC<SchemaTabContentProps> = ({ operation, openApiS
     }
   }
   const fullyResolvedRequestSchema = requestSchema ? deepResolveRefs(requestSchema, openApiSpec) : undefined;
-
 
   let responseSchema: SchemaObject | undefined = undefined;
   const successResponseCode = Object.keys(operation.responses).find(code => code.startsWith('2'));
@@ -48,7 +49,7 @@ const SchemaTabContent: React.FC<SchemaTabContentProps> = ({ operation, openApiS
         <Card>
           <CardHeader><CardTitle className="text-lg">Request Body Schema</CardTitle></CardHeader>
           <CardContent>
-            <JsonViewer json={fullyResolvedRequestSchema} />
+            <SchemaTreeView schema={fullyResolvedRequestSchema} name="Request" isExpanded={true} />
           </CardContent>
         </Card>
       )}
@@ -58,15 +59,13 @@ const SchemaTabContent: React.FC<SchemaTabContentProps> = ({ operation, openApiS
         <Card>
           <CardHeader><CardTitle className="text-lg">Response Body Schema (Typical Success)</CardTitle></CardHeader>
           <CardContent>
-            <JsonViewer json={fullyResolvedResponseSchema} />
+            <SchemaTreeView schema={fullyResolvedResponseSchema} name="Response" isExpanded={true} />
           </CardContent>
         </Card>
       )}
       {!fullyResolvedResponseSchema && <p className="text-sm text-muted-foreground mt-4">No primary success response schema defined (for application/json).</p>}
-      <p className="text-xs text-muted-foreground italic mt-4">Note: Highlighting required fields within schemas is planned for a future update.</p>
     </div>
   );
 };
 
 export default SchemaTabContent;
-
