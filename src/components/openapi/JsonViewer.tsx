@@ -13,8 +13,8 @@ const JsonViewer: React.FC<JsonViewerProps> = ({ json, title }) => {
 
   return (
     <div className="my-4">
-      {title && <h4 className="text-md font-semibold mb-2 text-[hsl(0_0%_83%)]">{title}</h4>}
-      <div className="bg-[hsl(0_0%_15%)] p-4 rounded-md max-h-96 overflow-auto">
+      {title && <h4 className="text-md font-semibold mb-2 text-foreground">{title}</h4>}
+      <div className="bg-muted p-4 rounded-md max-h-96 overflow-auto">
         <SyntaxHighlighter language="json" style={okaidia} customStyle={{ margin: 0, background: 'transparent' }}>
           {dataString}
         </SyntaxHighlighter>
