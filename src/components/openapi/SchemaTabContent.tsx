@@ -28,12 +28,28 @@ const SchemaTabContent: React.FC<SchemaTabContentProps> = ({ operation, openApiS
   const fullyResolvedRequestSchema = requestSchema ? deepResolveRefs(requestSchema, openApiSpec) : undefined;
 
   let responseSchema: SchemaObject | undefined = undefined;
-  const successResponseCode = Object.keys(operation.responses).find(code => code.startsWith('2'));
-  if (successResponseCode) {
-    const responseOrRef = operation.responses[successResponseCode];
-    const responseObject = isReferenceObject(responseOrRef)
-      ? resolveReference<ResponseObject>(responseOrRef.$ref, openApiSpec)
-      : responseOrRef;
+  let responseCardTitle = "Response Body Schema";
+  let targetResponseCodeForSchema = '200';
+  let responseDefinition = operation.responses[targetResponseCodeForSchema];
+
+  if (!responseDefinition) {
+    // Fallback to the first 2xx response if 200 is not found
+    const firstSuccessCode = Object.keys(operation.responses).find(code => code.startsWith('2'));
+    if (firstSuccessCode) {
+      targetResponseCodeForSchema = firstSuccessCode;
+      responseDefinition = operation.responses[targetResponseCodeForSchema];
+      responseCardTitle = `Response Body Schema (${targetResponseCodeForSchema} - Typical Success)`;
+    } else {
+      responseCardTitle = "Response Body Schema (No 2xx Success Response Defined)";
+    }
+  } else {
+    responseCardTitle = `Response Body Schema (200)`;
+  }
+
+  if (responseDefinition) {
+    const responseObject = isReferenceObject(responseDefinition)
+      ? resolveReference<ResponseObject>(responseDefinition.$ref, openApiSpec)
+      : responseDefinition;
     if (responseObject?.content?.['application/json']?.schema) {
       const schemaOrRef = responseObject.content['application/json'].schema;
       responseSchema = isReferenceObject(schemaOrRef)
@@ -57,13 +73,22 @@ const SchemaTabContent: React.FC<SchemaTabContentProps> = ({ operation, openApiS
 
       {fullyResolvedResponseSchema && (
         <Card>
-          <CardHeader><CardTitle className="text-lg">Response Body Schema (Typical Success)</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-lg">{responseCardTitle}</CardTitle></CardHeader>
           <CardContent>
             <SchemaTreeView schema={fullyResolvedResponseSchema} name="Response" isExpanded={true} />
           </CardContent>
         </Card>
       )}
-      {!fullyResolvedResponseSchema && <p className="text-sm text-muted-foreground mt-4">No primary success response schema defined (for application/json).</p>}
+      {!fullyResolvedResponseSchema && targetResponseCodeForSchema && (
+          <p className="text-sm text-muted-foreground mt-4">
+            No response body schema defined for {targetResponseCodeForSchema === '200' ? '200 response' : `response ${targetResponseCodeForSchema}`} (application/json).
+          </p>
+      )}
+       {!fullyResolvedResponseSchema && !targetResponseCodeForSchema && (
+          <p className="text-sm text-muted-foreground mt-4">
+            No primary success response schema defined (for application/json).
+          </p>
+       )}
     </div>
   );
 };
