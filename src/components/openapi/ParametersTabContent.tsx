@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { OpenApiSpec, OperationObject, ParameterObject, RequestBodyObject, isReferenceObject, SchemaObject, ReferenceObject, SecuritySchemeObject } from '@/types/openapi/index';
+import React, { useState, useMemo } from 'react';
+import { OpenApiSpec, OperationObject, ParameterObject, RequestBodyObject, isReferenceObject, SchemaObject, ReferenceObject, SecuritySchemeObject, SecurityRequirementObject } from '@/types/openapi/index';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -34,6 +34,7 @@ const resolveReference = <T,>(ref: string, spec: OpenApiSpec): T | undefined => 
     if (current && part in current) {
       current = current[part];
     } else {
+      console.warn(`Could not resolve reference part: "${part}" in path "${ref}". Full spec components:`, spec.components);
       return undefined;
     }
   }
@@ -48,6 +49,40 @@ const ParametersTabContent: React.FC<ParametersTabContentProps> = ({ operation, 
   const handleInputChange = (name: string, value: string) => {
     setParameterValues(prev => ({ ...prev, [name]: value }));
   };
+
+  const allApplicableApiKeySchemes = useMemo(() => {
+    const schemes: SecuritySchemeObject[] = [];
+    const schemeNames = new Set<string>();
+
+    const processSecurityRequirements = (securityRequirements: SecurityRequirementObject[] | undefined) => {
+      if (!securityRequirements || !openApiSpec.components?.securitySchemes) return;
+
+      for (const secRequirement of securityRequirements) {
+        for (const schemeKey of Object.keys(secRequirement)) {
+          const securitySchemeRef = openApiSpec.components.securitySchemes[schemeKey];
+          if (securitySchemeRef) {
+            const securityScheme = isReferenceObject(securitySchemeRef)
+              ? resolveReference<SecuritySchemeObject>(securitySchemeRef.$ref, openApiSpec)
+              : securitySchemeRef;
+
+            if (securityScheme && securityScheme.type === 'apiKey' && securityScheme.in === 'header' && securityScheme.name) {
+              if (!schemeNames.has(securityScheme.name)) {
+                schemes.push(securityScheme);
+                schemeNames.add(securityScheme.name);
+              }
+            }
+          }
+        }
+      }
+    };
+
+    // Process global security requirements
+    processSecurityRequirements(openApiSpec.security);
+    // Process operation-specific security requirements
+    processSecurityRequirements(operation.security);
+    
+    return schemes;
+  }, [openApiSpec, operation.security]);
 
   const handleExecute = async () => {
     setApiResponse({ data: null, status: null, headers: null, error: null, loading: true });
@@ -96,30 +131,15 @@ const ParametersTabContent: React.FC<ParametersTabContentProps> = ({ operation, 
       }
     });
 
-    // Add security scheme headers (e.g., API Keys)
-    if (operation.security) {
-      operation.security.forEach(secRequirement => {
-        Object.keys(secRequirement).forEach(schemeKey => {
-          const securitySchemeRef = openApiSpec.components?.securitySchemes?.[schemeKey];
-          if (securitySchemeRef) {
-            // Assuming security schemes are not references themselves for now, but direct objects
-            // If they can be references, this would need resolveReference
-            const securityScheme = isReferenceObject(securitySchemeRef)
-                ? resolveReference<SecuritySchemeObject>(securitySchemeRef.$ref, openApiSpec)
-                : securitySchemeRef;
-
-            if (securityScheme && securityScheme.type === 'apiKey' && securityScheme.in === 'header' && securityScheme.name) {
-              if (parameterValues[securityScheme.name]) {
-                requestHeaders.append(securityScheme.name, parameterValues[securityScheme.name]);
-                console.log(`Added API Key Header: ${securityScheme.name}`);
-              } else {
-                console.warn(`API Key ${securityScheme.name} specified in security scheme but no value provided.`);
-              }
-            }
-          }
-        });
-      });
-    }
+    // Add API Key headers from all applicable schemes (global and operation-specific)
+    allApplicableApiKeySchemes.forEach(securityScheme => {
+      if (securityScheme.name && parameterValues[securityScheme.name]) {
+        requestHeaders.append(securityScheme.name, parameterValues[securityScheme.name]);
+        console.log(`Added API Key Header: ${securityScheme.name}`);
+      } else if (securityScheme.name) {
+        console.warn(`API Key ${securityScheme.name} specified in security scheme but no value provided.`);
+      }
+    });
     
     // Note: Cookie parameters are not directly settable in standard browser fetch requests this way.
     // They are managed by the browser. This part is a simplification.
@@ -307,28 +327,6 @@ const ParametersTabContent: React.FC<ParametersTabContentProps> = ({ operation, 
   const headerParams = parameters.filter(p => (isReferenceObject(p) ? resolveReference<ParameterObject>(p.$ref, openApiSpec)?.in === 'header' : (p as ParameterObject).in === 'header'));
   const cookieParams = parameters.filter(p => (isReferenceObject(p) ? resolveReference<ParameterObject>(p.$ref, openApiSpec)?.in === 'cookie' : (p as ParameterObject).in === 'cookie'));
 
-  // Determine if there are any API key headers required by security schemes
-  const apiKeySecurityHeaders = [];
-  if (operation.security && openApiSpec.components?.securitySchemes) {
-    for (const secRequirement of operation.security) {
-      for (const schemeKey of Object.keys(secRequirement)) {
-        const securitySchemeRef = openApiSpec.components.securitySchemes[schemeKey];
-        if (securitySchemeRef) {
-            const securityScheme = isReferenceObject(securitySchemeRef)
-                ? resolveReference<SecuritySchemeObject>(securitySchemeRef.$ref, openApiSpec)
-                : securitySchemeRef;
-
-            if (securityScheme && securityScheme.type === 'apiKey' && securityScheme.in === 'header' && securityScheme.name) {
-              // Avoid duplicates if multiple security requirements reference the same scheme
-              if (!apiKeySecurityHeaders.find(h => h.name === securityScheme.name)) {
-                apiKeySecurityHeaders.push(securityScheme);
-              }
-            }
-        }
-      }
-    }
-  }
-
   return (
     <div className="space-y-6">
       {pathParams.length > 0 && (
@@ -350,11 +348,12 @@ const ParametersTabContent: React.FC<ParametersTabContentProps> = ({ operation, 
         </Card>
       )}
       
-      {apiKeySecurityHeaders.length > 0 && (
+      {allApplicableApiKeySchemes.length > 0 && (
         <Card>
           <CardHeader><CardTitle className="text-lg">Authentication Headers</CardTitle></CardHeader>
           <CardContent>
-            {apiKeySecurityHeaders.map(secScheme => (
+            {allApplicableApiKeySchemes.map(secScheme => (
+              secScheme.name && // Ensure name exists before rendering
               <div key={secScheme.name} className="mb-4 p-3 border rounded-md bg-card">
                 <Label htmlFor={secScheme.name} className="font-semibold text-sm flex items-center">
                   {secScheme.name}
@@ -363,7 +362,7 @@ const ParametersTabContent: React.FC<ParametersTabContentProps> = ({ operation, 
                 {secScheme.description && <p className="text-xs text-muted-foreground mt-1 mb-1">{secScheme.description}</p>}
                 <Input
                   id={secScheme.name}
-                  type="text"
+                  type="text" // Consider "password" type if appropriate, but API keys are often visible
                   placeholder={`Enter value for ${secScheme.name}`}
                   value={parameterValues[secScheme.name] || ''}
                   onChange={(e) => handleInputChange(secScheme.name, e.target.value)}
