@@ -45,28 +45,27 @@ const SchemaTabContent: React.FC<SchemaTabContentProps> = ({ operation, openApiS
   return (
     <div className="space-y-6">
       {fullyResolvedRequestSchema && (
-        <Card>
-          <CardHeader><CardTitle className="text-lg">Request Body Schema</CardTitle></CardHeader>
+        <Card className="bg-[hsl(0_0%_14%)] border-[hsl(0_0%_20%)]">
+          <CardHeader><CardTitle className="text-lg text-[hsl(0_0%_83%)]">Request Body Schema</CardTitle></CardHeader>
           <CardContent>
             <JsonViewer json={fullyResolvedRequestSchema} />
           </CardContent>
         </Card>
       )}
-      {!fullyResolvedRequestSchema && <p className="text-sm text-muted-foreground">No request body schema defined (for application/json).</p>}
+      {!fullyResolvedRequestSchema && <p className="text-sm text-[hsl(0_0%_60%)]">No request body schema defined (for application/json).</p>}
 
       {fullyResolvedResponseSchema && (
-        <Card>
-          <CardHeader><CardTitle className="text-lg">Response Body Schema (Typical Success)</CardTitle></CardHeader>
+        <Card className="bg-[hsl(0_0%_14%)] border-[hsl(0_0%_20%)]">
+          <CardHeader><CardTitle className="text-lg text-[hsl(0_0%_83%)]">Response Body Schema (Typical Success)</CardTitle></CardHeader>
           <CardContent>
             <JsonViewer json={fullyResolvedResponseSchema} />
           </CardContent>
         </Card>
       )}
-      {!fullyResolvedResponseSchema && <p className="text-sm text-muted-foreground mt-4">No primary success response schema defined (for application/json).</p>}
-      <p className="text-xs text-muted-foreground italic mt-4">Note: Highlighting required fields within schemas is planned for a future update.</p>
+      {!fullyResolvedResponseSchema && <p className="text-sm text-[hsl(0_0%_60%)] mt-4">No primary success response schema defined (for application/json).</p>}
+      <p className="text-xs text-[hsl(0_0%_60%)] italic mt-4">Note: Highlighting required fields within schemas is planned for a future update.</p>
     </div>
   );
 };
 
 export default SchemaTabContent;
-

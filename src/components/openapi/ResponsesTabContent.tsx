@@ -23,6 +23,7 @@ const ResponsesTabContent: React.FC<ResponsesTabContentProps> = ({ operation, op
           : responseObjectOrRef;
 
         if (!responseObject) {
+          // This paragraph will use the global foreground color
           return <p key={statusCode}>Could not resolve response: {isReferenceObject(responseObjectOrRef) ? responseObjectOrRef.$ref : statusCode}</p>;
         }
 
@@ -48,19 +49,18 @@ const ResponsesTabContent: React.FC<ResponsesTabContentProps> = ({ operation, op
             resolvedSchema = deepResolveRefs(resolvedSchema, openApiSpec);
         }
 
-
         return (
-          <Card key={statusCode}>
+          <Card key={statusCode} className="bg-[hsl(0_0%_14%)] border-[hsl(0_0%_20%)]">
             <CardHeader>
-              <CardTitle className="text-lg">
-                Status <span className={`font-bold ${parseInt(statusCode) >= 400 ? 'text-red-600' : 'text-green-600'}`}>{statusCode}</span>
+              <CardTitle className="text-lg text-[hsl(0_0%_83%)]">
+                Status <span className={`font-bold ${parseInt(statusCode) >= 400 ? 'text-red-500' : 'text-green-500'}`}>{statusCode}</span> {/* Adjusted red/green for better contrast if needed, but 500 is usually fine */}
               </CardTitle>
-              <CardDescription>{responseObject.description}</CardDescription>
+              <CardDescription className="text-[hsl(0_0%_60%)]">{responseObject.description}</CardDescription>
             </CardHeader>
             <CardContent>
               {exampleValue !== undefined && <JsonViewer json={exampleValue} title="Example Response Body" />}
               {resolvedSchema && exampleValue === undefined && <JsonViewer json={resolvedSchema} title="Response Schema" />}
-              {exampleValue === undefined && !resolvedSchema && <p className="text-sm text-muted-foreground">No example or schema provided for this response content.</p>}
+              {exampleValue === undefined && !resolvedSchema && <p className="text-sm text-[hsl(0_0%_60%)]">No example or schema provided for this response content.</p>}
             </CardContent>
           </Card>
         );
@@ -70,4 +70,3 @@ const ResponsesTabContent: React.FC<ResponsesTabContentProps> = ({ operation, op
 };
 
 export default ResponsesTabContent;
-
