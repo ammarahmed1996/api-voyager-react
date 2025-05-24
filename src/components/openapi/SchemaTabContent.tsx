@@ -1,6 +1,5 @@
-
 import React from 'react';
-import { OpenApiSpec, OperationObject, SchemaObject, isReferenceObject, RequestBodyObject, ResponseObject } from '@/types/openapi';
+import { OpenApiSpec, OperationObject, SchemaObject, isReferenceObject, RequestBodyObject, ResponseObject } from '@/types/openapi/index';
 import JsonViewer from './JsonViewer';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 

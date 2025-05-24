@@ -1,4 +1,3 @@
-
 import React from 'react';
 import {
   Accordion,
@@ -6,7 +5,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
-import { OpenApiSpec, OperationObject, PathItemObject } from '@/types/openapi';
+import { OpenApiSpec, OperationObject, PathItemObject } from '@/types/openapi/index';
 import MethodBadge from './MethodBadge';
 import EndpointTabs from './EndpointTabs';
 

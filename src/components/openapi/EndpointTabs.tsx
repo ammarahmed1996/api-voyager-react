@@ -1,7 +1,6 @@
-
 import React from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { OpenApiSpec, OperationObject } from '@/types/openapi';
+import { OpenApiSpec, OperationObject } from '@/types/openapi/index';
 import ParametersTabContent from './ParametersTabContent';
 import ResponsesTabContent from './ResponsesTabContent';
 import SchemaTabContent from './SchemaTabContent';

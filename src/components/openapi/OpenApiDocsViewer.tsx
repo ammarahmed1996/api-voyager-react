@@ -1,13 +1,13 @@
-
 import React, { useState, useCallback } from 'react';
 import * as yaml from 'js-yaml';
-import { OpenApiSpec } from '@/types/openapi';
+import { OpenApiSpec } from '@/types/openapi/index';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { FileText, Info, X } from 'lucide-react';
 import EndpointAccordion from './EndpointAccordion';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Label } from "@/components/ui/label";
 
 const OpenApiDocsViewer: React.FC = () => {
   const [openApiSpec, setOpenApiSpec] = useState<OpenApiSpec | null>(null);
@@ -118,10 +118,5 @@ const OpenApiDocsViewer: React.FC = () => {
     </div>
   );
 };
-
-// Add Label here as it's used above but not imported if it's not from shadcn.
-// If Label is part of shadcn/ui/label, then it's fine.
-// Assuming it is:
-import { Label } from "@/components/ui/label";
 
 export default OpenApiDocsViewer;
