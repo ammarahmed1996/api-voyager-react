@@ -1,29 +1,14 @@
+
 import React from 'react';
 import { OpenApiSpec, OperationObject, ResponseObject, isReferenceObject, MediaTypeObject, SchemaObject, ExampleObject } from '@/types/openapi/index';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import JsonViewer from './JsonViewer';
+import { resolveReference, deepResolveRefs } from './openapiUtils';
 
 interface ResponsesTabContentProps {
   operation: OperationObject;
   openApiSpec: OpenApiSpec;
 }
-
-const resolveReference = <T,>(ref: string, spec: OpenApiSpec): T | undefined => {
-  if (!ref.startsWith('#/components/')) {
-    console.warn(`Unsupported reference format: ${ref}`);
-    return undefined;
-  }
-  const parts = ref.split('/').slice(2);
-  let current: any = spec.components;
-  for (const part of parts) {
-    if (current && part in current) {
-      current = current[part];
-    } else {
-      return undefined;
-    }
-  }
-  return current as T;
-};
 
 const ResponsesTabContent: React.FC<ResponsesTabContentProps> = ({ operation, openApiSpec }) => {
   if (!operation.responses) {
@@ -57,7 +42,11 @@ const ResponsesTabContent: React.FC<ResponsesTabContentProps> = ({ operation, op
         }
         
         const schema = jsonContent?.schema;
-        const resolvedSchema = schema && isReferenceObject(schema) ? resolveReference<SchemaObject>(schema.$ref, openApiSpec) : schema as SchemaObject;
+        let resolvedSchema = schema && isReferenceObject(schema) ? resolveReference<SchemaObject>(schema.$ref, openApiSpec) : schema as SchemaObject;
+        
+        if (resolvedSchema) {
+            resolvedSchema = deepResolveRefs(resolvedSchema, openApiSpec);
+        }
 
 
         return (
@@ -81,3 +70,4 @@ const ResponsesTabContent: React.FC<ResponsesTabContentProps> = ({ operation, op
 };
 
 export default ResponsesTabContent;
+
