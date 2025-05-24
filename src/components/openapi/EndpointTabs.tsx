@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { OpenApiSpec, OperationObject } from '@/types/openapi/index';
@@ -8,9 +9,11 @@ import SchemaTabContent from './SchemaTabContent';
 interface EndpointTabsProps {
   operation: OperationObject;
   openApiSpec: OpenApiSpec;
+  path: string;
+  method: string;
 }
 
-const EndpointTabs: React.FC<EndpointTabsProps> = ({ operation, openApiSpec }) => {
+const EndpointTabs: React.FC<EndpointTabsProps> = ({ operation, openApiSpec, path, method }) => {
   return (
     <Tabs defaultValue="parameters" className="w-full mt-4">
       <TabsList className="grid w-full grid-cols-3">
@@ -19,7 +22,7 @@ const EndpointTabs: React.FC<EndpointTabsProps> = ({ operation, openApiSpec }) =
         <TabsTrigger value="schema">Schema</TabsTrigger>
       </TabsList>
       <TabsContent value="parameters" className="pt-4">
-        <ParametersTabContent operation={operation} openApiSpec={openApiSpec} />
+        <ParametersTabContent operation={operation} openApiSpec={openApiSpec} path={path} method={method} />
       </TabsContent>
       <TabsContent value="responses" className="pt-4">
         <ResponsesTabContent operation={operation} openApiSpec={openApiSpec} />

@@ -1,3 +1,4 @@
+
 import React from 'react';
 import {
   Accordion,
@@ -37,7 +38,7 @@ const EndpointAccordion: React.FC<EndpointAccordionProps> = ({ path, pathItem, o
           </AccordionTrigger>
           <AccordionContent className="p-4 border-t bg-background">
             {operation.description && <p className="text-sm text-muted-foreground mb-4">{operation.description}</p>}
-            <EndpointTabs operation={operation} openApiSpec={openApiSpec} />
+            <EndpointTabs operation={operation} openApiSpec={openApiSpec} path={path} method={method} />
           </AccordionContent>
         </AccordionItem>
       ))}

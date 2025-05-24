@@ -1,13 +1,25 @@
-import React from 'react';
-import { OpenApiSpec, OperationObject, ParameterObject, RequestBodyObject, isReferenceObject, SchemaObject, ReferenceObject } from '@/types/openapi/index'; // Changed path
+import React, { useState } from 'react';
+import { OpenApiSpec, OperationObject, ParameterObject, RequestBodyObject, isReferenceObject, SchemaObject, ReferenceObject } from '@/types/openapi/index';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import JsonViewer from './JsonViewer';
+import { Loader2 } from 'lucide-react';
 
 interface ParametersTabContentProps {
   operation: OperationObject;
-  openApiSpec: OpenApiSpec; // Needed to resolve references if any
+  openApiSpec: OpenApiSpec;
+  path: string;
+  method: string;
+}
+
+interface ApiResponse {
+  data: any;
+  status: number | null;
+  headers: Record<string, string> | null;
+  error: string | null;
+  loading: boolean;
 }
 
 // Basic reference resolver (can be expanded)
@@ -29,11 +41,98 @@ const resolveReference = <T,>(ref: string, spec: OpenApiSpec): T | undefined => 
 };
 
 
-const ParametersTabContent: React.FC<ParametersTabContentProps> = ({ operation, openApiSpec }) => {
-  const [parameterValues, setParameterValues] = React.useState<Record<string, string>>({});
+const ParametersTabContent: React.FC<ParametersTabContentProps> = ({ operation, openApiSpec, path, method }) => {
+  const [parameterValues, setParameterValues] = useState<Record<string, string>>({});
+  const [apiResponse, setApiResponse] = useState<ApiResponse | null>(null);
 
   const handleInputChange = (name: string, value: string) => {
     setParameterValues(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleExecute = async () => {
+    setApiResponse({ data: null, status: null, headers: null, error: null, loading: true });
+
+    const serverUrl = openApiSpec.servers?.[0]?.url?.replace(/\/$/, '');
+    if (!serverUrl) {
+      setApiResponse({ data: null, status: null, headers: null, error: 'No server URL defined in OpenAPI spec.', loading: false });
+      return;
+    }
+
+    let processedPath = path;
+    operation.parameters?.forEach(paramOrRef => {
+      const param = isReferenceObject(paramOrRef) ? resolveReference<ParameterObject>(paramOrRef.$ref, openApiSpec) : paramOrRef;
+      if (param && param.in === 'path' && parameterValues[param.name]) {
+        processedPath = processedPath.replace(`{${param.name}}`, encodeURIComponent(parameterValues[param.name]));
+      }
+    });
+
+    const queryParams = new URLSearchParams();
+    operation.parameters?.forEach(paramOrRef => {
+      const param = isReferenceObject(paramOrRef) ? resolveReference<ParameterObject>(paramOrRef.$ref, openApiSpec) : paramOrRef;
+      if (param && param.in === 'query' && parameterValues[param.name]) {
+        queryParams.append(param.name, parameterValues[param.name]);
+      }
+    });
+    const queryString = queryParams.toString();
+    const finalUrl = `${serverUrl}${processedPath}${queryString ? `?${queryString}` : ''}`;
+
+    const requestHeaders = new Headers();
+    // Default headers - assuming JSON, can be made more dynamic
+    if (operation.requestBody) {
+        requestHeaders.append('Content-Type', 'application/json');
+    }
+    requestHeaders.append('Accept', 'application/json');
+
+    operation.parameters?.forEach(paramOrRef => {
+      const param = isReferenceObject(paramOrRef) ? resolveReference<ParameterObject>(paramOrRef.$ref, openApiSpec) : paramOrRef;
+      if (param && param.in === 'header' && parameterValues[param.name]) {
+        requestHeaders.append(param.name, parameterValues[param.name]);
+      }
+    });
+    
+    // Note: Cookie parameters are not directly settable in standard browser fetch requests this way.
+    // They are managed by the browser. This part is a simplification.
+    // operation.parameters?.forEach(paramOrRef => { ... cookie logic ... });
+
+
+    let requestBodyContent: string | undefined = undefined;
+    if (operation.requestBody && (method.toLowerCase() !== 'get' && method.toLowerCase() !== 'head')) {
+      const bodyInput = parameterValues['Request Body'];
+      if (bodyInput) {
+        // Assuming bodyInput is a JSON string for now
+        requestBodyContent = bodyInput;
+      }
+    }
+
+    try {
+      const response = await fetch(finalUrl, {
+        method: method.toUpperCase(),
+        headers: requestHeaders,
+        body: requestBodyContent,
+      });
+
+      const responseStatus = response.status;
+      const responseHeadersObj: Record<string, string> = {};
+      response.headers.forEach((value, key) => { responseHeadersObj[key] = value; });
+      
+      let responseData: any;
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        responseData = await response.json();
+      } else {
+        responseData = await response.text();
+      }
+
+      if (!response.ok) {
+        setApiResponse({ data: responseData, status: responseStatus, headers: responseHeadersObj, error: `HTTP error! Status: ${responseStatus}`, loading: false });
+        return;
+      }
+      setApiResponse({ data: responseData, status: responseStatus, headers: responseHeadersObj, error: null, loading: false });
+
+    } catch (e: any) {
+      console.error("API execution error:", e);
+      setApiResponse({ data: null, status: null, headers: null, error: e.message || 'Failed to fetch', loading: false });
+    }
   };
 
   const renderParameter = (param: ParameterObject | RequestBodyObject | ReferenceObject, type: 'parameter' | 'requestBody') => {
@@ -169,6 +268,7 @@ const ParametersTabContent: React.FC<ParametersTabContentProps> = ({ operation, 
         <Card>
           <CardHeader><CardTitle className="text-lg">Cookie Parameters</CardTitle></CardHeader>
           <CardContent>{cookieParams.map(p => renderParameter(p, 'parameter'))}</CardContent>
+           <CardDescription className="px-6 pb-4 text-xs text-muted-foreground italic">Note: Cookie parameters are typically managed by the browser and cannot be directly set via manual fetch requests in this manner. This section is for informational purposes.</CardDescription>
         </Card>
       )}
       {operation.requestBody && (
@@ -178,10 +278,52 @@ const ParametersTabContent: React.FC<ParametersTabContentProps> = ({ operation, 
         </Card>
       )}
       <div className="mt-6">
-        {/* Placeholder for Execute button. Actual API call logic will be added later. */}
-        {/* <Button disabled>Execute (Coming Soon)</Button> */}
-        <p className="text-sm text-muted-foreground italic">API execution functionality will be implemented in a future update.</p>
+        <Button onClick={handleExecute} disabled={apiResponse?.loading}>
+          {apiResponse?.loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          Execute
+        </Button>
       </div>
+
+      {apiResponse && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-lg">API Response</CardTitle>
+            {apiResponse.status && (
+              <CardDescription>
+                Status: <span className={`font-bold ${apiResponse.status >= 400 ? 'text-red-500' : 'text-green-500'}`}>{apiResponse.status}</span>
+              </CardDescription>
+            )}
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {apiResponse.error && (
+              <div className="p-4 bg-destructive/10 border border-destructive text-destructive rounded-md">
+                <p className="font-semibold">Error:</p>
+                <pre className="text-sm whitespace-pre-wrap">{apiResponse.error}</pre>
+                {typeof apiResponse.data === 'string' && <pre className="text-sm whitespace-pre-wrap mt-2">{apiResponse.data}</pre>}
+                {typeof apiResponse.data === 'object' && apiResponse.data !== null && <JsonViewer json={apiResponse.data} />}
+
+              </div>
+            )}
+            {apiResponse.headers && (
+              <div>
+                <h4 className="font-semibold text-md">Headers:</h4>
+                <JsonViewer json={apiResponse.headers} />
+              </div>
+            )}
+            {!apiResponse.error && apiResponse.data !== null && apiResponse.data !== undefined && (
+              <div>
+                <h4 className="font-semibold text-md">Body:</h4>
+                {typeof apiResponse.data === 'string' ? (
+                  <pre className="p-2 bg-muted rounded-md text-sm overflow-auto">{apiResponse.data || '(Empty response body)'}</pre>
+                ) : (
+                  <JsonViewer json={apiResponse.data} />
+                )}
+              </div>
+            )}
+            {apiResponse.loading && <p>Loading...</p>}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };
