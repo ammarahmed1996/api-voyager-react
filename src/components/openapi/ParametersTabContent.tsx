@@ -1,6 +1,5 @@
-
 import React from 'react';
-import { OpenApiSpec, OperationObject, ParameterObject, RequestBodyObject, isReferenceObject, SchemaObject } from '@/types/openapi';
+import { OpenApiSpec, OperationObject, ParameterObject, RequestBodyObject, isReferenceObject, SchemaObject, ReferenceObject } from '@/types/openapi';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -37,33 +36,16 @@ const ParametersTabContent: React.FC<ParametersTabContentProps> = ({ operation, 
     setParameterValues(prev => ({ ...prev, [name]: value }));
   };
 
-  const renderParameter = (param: ParameterObject | RequestBodyObject, type: 'parameter' | 'requestBody') => {
+  const renderParameter = (param: ParameterObject | RequestBodyObject | ReferenceObject, type: 'parameter' | 'requestBody') => {
     let name: string = '';
     let description: string | undefined;
     let required: boolean | undefined = false;
     let schema: SchemaObject | ReferenceObject | undefined;
     let inType: string | undefined;
 
-    if (type === 'parameter' && !isReferenceObject(param)) {
-      const p = param as ParameterObject;
-      name = p.name;
-      description = p.description;
-      required = p.required;
-      schema = p.schema;
-      inType = p.in;
-    } else if (type === 'requestBody' && !isReferenceObject(param)) {
-      const rb = param as RequestBodyObject;
-      name = 'Request Body'; // Placeholder name
-      description = rb.description;
-      required = rb.required;
-      // Assuming JSON content type for simplicity
-      if (rb.content && rb.content['application/json'] && rb.content['application/json'].schema) {
-        schema = rb.content['application/json'].schema;
-      }
-      inType = 'body';
-    } else if (isReferenceObject(param)) {
-        // Basic reference handling for parameters for now
-        if(param.$ref.startsWith('#/components/parameters/')) {
+    if (isReferenceObject(param)) {
+        // Handle ReferenceObject first
+        if (type === 'parameter' && param.$ref.startsWith('#/components/parameters/')) {
             const resolvedParam = resolveReference<ParameterObject>(param.$ref, openApiSpec);
             if (resolvedParam) {
                 name = resolvedParam.name;
@@ -74,10 +56,10 @@ const ParametersTabContent: React.FC<ParametersTabContentProps> = ({ operation, 
             } else {
                 return <p key={param.$ref}>Could not resolve parameter reference: {param.$ref}</p>;
             }
-        } else if (param.$ref.startsWith('#/components/requestBodies/')) {
+        } else if (type === 'requestBody' && param.$ref.startsWith('#/components/requestBodies/')) {
             const resolvedBody = resolveReference<RequestBodyObject>(param.$ref, openApiSpec);
              if (resolvedBody) {
-                name = 'Request Body';
+                name = 'Request Body'; // Placeholder name
                 description = resolvedBody.description;
                 required = resolvedBody.required;
                 if (resolvedBody.content && resolvedBody.content['application/json'] && resolvedBody.content['application/json'].schema) {
@@ -88,15 +70,32 @@ const ParametersTabContent: React.FC<ParametersTabContentProps> = ({ operation, 
                 return <p key={param.$ref}>Could not resolve request body reference: {param.$ref}</p>;
             }
         } else {
-             return <p key={param.$ref}>Unsupported reference: {param.$ref}</p>;
+             return <p key={param.$ref}>Unsupported reference type or path for {type}: {param.$ref}</p>;
         }
+    } else if (type === 'parameter') { // param is ParameterObject
+      const p = param as ParameterObject;
+      name = p.name;
+      description = p.description;
+      required = p.required;
+      schema = p.schema;
+      inType = p.in;
+    } else if (type === 'requestBody') { // param is RequestBodyObject
+      const rb = param as RequestBodyObject;
+      name = 'Request Body'; // Placeholder name
+      description = rb.description;
+      required = rb.required;
+      // Assuming JSON content type for simplicity
+      if (rb.content && rb.content['application/json'] && rb.content['application/json'].schema) {
+        schema = rb.content['application/json'].schema;
+      }
+      inType = 'body';
     }
 
 
     const resolvedSchema = schema && isReferenceObject(schema) ? resolveReference<SchemaObject>(schema.$ref, openApiSpec) : schema as SchemaObject;
 
     return (
-      <div key={name + (inType || '')} className="mb-6 p-4 border rounded-md bg-card">
+      <div key={name + (inType || '') + Math.random()} className="mb-6 p-4 border rounded-md bg-card">
         <div className="flex items-center mb-1">
           <strong className="text-sm font-semibold text-foreground">{name}</strong>
           {inType && <span className="ml-2 text-xs text-muted-foreground">({inType})</span>}
@@ -135,39 +134,41 @@ const ParametersTabContent: React.FC<ParametersTabContentProps> = ({ operation, 
             />
           </>
         )}
+        {inType === 'body' && !resolvedSchema && <p className="text-xs text-muted-foreground">No schema defined for request body.</p>}
       </div>
     );
   };
 
-  const pathParams = operation.parameters?.filter(p => !isReferenceObject(p) && p.in === 'path' || (isReferenceObject(p) && resolveReference<ParameterObject>(p.$ref, openApiSpec)?.in === 'path')) || [];
-  const queryParams = operation.parameters?.filter(p => !isReferenceObject(p) && p.in === 'query' || (isReferenceObject(p) && resolveReference<ParameterObject>(p.$ref, openApiSpec)?.in === 'query')) || [];
-  const headerParams = operation.parameters?.filter(p => !isReferenceObject(p) && p.in === 'header' || (isReferenceObject(p) && resolveReference<ParameterObject>(p.$ref, openApiSpec)?.in === 'header')) || [];
-  const cookieParams = operation.parameters?.filter(p => !isReferenceObject(p) && p.in === 'cookie' || (isReferenceObject(p) && resolveReference<ParameterObject>(p.$ref, openApiSpec)?.in === 'cookie')) || [];
+  const parameters = operation.parameters || [];
+  const pathParams = parameters.filter(p => (isReferenceObject(p) ? resolveReference<ParameterObject>(p.$ref, openApiSpec)?.in === 'path' : p.in === 'path'));
+  const queryParams = parameters.filter(p => (isReferenceObject(p) ? resolveReference<ParameterObject>(p.$ref, openApiSpec)?.in === 'query' : p.in === 'query'));
+  const headerParams = parameters.filter(p => (isReferenceObject(p) ? resolveReference<ParameterObject>(p.$ref, openApiSpec)?.in === 'header' : p.in === 'header'));
+  const cookieParams = parameters.filter(p => (isReferenceObject(p) ? resolveReference<ParameterObject>(p.$ref, openApiSpec)?.in === 'cookie' : p.in === 'cookie'));
 
   return (
     <div className="space-y-6">
       {pathParams.length > 0 && (
         <Card>
           <CardHeader><CardTitle className="text-lg">Path Parameters</CardTitle></CardHeader>
-          <CardContent>{pathParams.map(p => renderParameter(isReferenceObject(p) ? p : p as ParameterObject, 'parameter'))}</CardContent>
+          <CardContent>{pathParams.map(p => renderParameter(p, 'parameter'))}</CardContent>
         </Card>
       )}
       {queryParams.length > 0 && (
         <Card>
           <CardHeader><CardTitle className="text-lg">Query Parameters</CardTitle></CardHeader>
-          <CardContent>{queryParams.map(p => renderParameter(isReferenceObject(p) ? p : p as ParameterObject, 'parameter'))}</CardContent>
+          <CardContent>{queryParams.map(p => renderParameter(p, 'parameter'))}</CardContent>
         </Card>
       )}
       {headerParams.length > 0 && (
         <Card>
           <CardHeader><CardTitle className="text-lg">Header Parameters</CardTitle></CardHeader>
-          <CardContent>{headerParams.map(p => renderParameter(isReferenceObject(p) ? p : p as ParameterObject, 'parameter'))}</CardContent>
+          <CardContent>{headerParams.map(p => renderParameter(p, 'parameter'))}</CardContent>
         </Card>
       )}
       {cookieParams.length > 0 && (
         <Card>
           <CardHeader><CardTitle className="text-lg">Cookie Parameters</CardTitle></CardHeader>
-          <CardContent>{cookieParams.map(p => renderParameter(isReferenceObject(p) ? p : p as ParameterObject, 'parameter'))}</CardContent>
+          <CardContent>{cookieParams.map(p => renderParameter(p, 'parameter'))}</CardContent>
         </Card>
       )}
       {operation.requestBody && (

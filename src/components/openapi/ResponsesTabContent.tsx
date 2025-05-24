@@ -1,6 +1,5 @@
-
 import React from 'react';
-import { OpenApiSpec, OperationObject, ResponseObject, isReferenceObject, MediaTypeObject, SchemaObject } from '@/types/openapi';
+import { OpenApiSpec, OperationObject, ResponseObject, isReferenceObject, MediaTypeObject, SchemaObject, ExampleObject } from '@/types/openapi';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import JsonViewer from './JsonViewer';
 
@@ -42,9 +41,21 @@ const ResponsesTabContent: React.FC<ResponsesTabContentProps> = ({ operation, op
           return <p key={statusCode}>Could not resolve response: {isReferenceObject(responseObjectOrRef) ? responseObjectOrRef.$ref : statusCode}</p>;
         }
 
-        // Assuming JSON content type for simplicity
         const jsonContent = responseObject.content?.['application/json'] as MediaTypeObject | undefined;
-        const example = jsonContent?.example || jsonContent?.examples?.['default']?.value; // Simple example picking
+        
+        let exampleValue: any;
+        if (jsonContent?.example) {
+          exampleValue = jsonContent.example;
+        } else if (jsonContent?.examples?.['default']) {
+          const defaultExampleOrRef = jsonContent.examples['default'];
+          if (isReferenceObject(defaultExampleOrRef)) {
+            const resolvedExample = resolveReference<ExampleObject>(defaultExampleOrRef.$ref, openApiSpec);
+            exampleValue = resolvedExample?.value;
+          } else {
+            exampleValue = defaultExampleOrRef.value;
+          }
+        }
+        
         const schema = jsonContent?.schema;
         const resolvedSchema = schema && isReferenceObject(schema) ? resolveReference<SchemaObject>(schema.$ref, openApiSpec) : schema as SchemaObject;
 
@@ -58,9 +69,9 @@ const ResponsesTabContent: React.FC<ResponsesTabContentProps> = ({ operation, op
               <CardDescription>{responseObject.description}</CardDescription>
             </CardHeader>
             <CardContent>
-              {example && <JsonViewer json={example} title="Example Response Body" />}
-              {resolvedSchema && !example && <JsonViewer json={resolvedSchema} title="Response Schema" />}
-              {!example && !resolvedSchema && <p className="text-sm text-muted-foreground">No example or schema provided for this response content.</p>}
+              {exampleValue !== undefined && <JsonViewer json={exampleValue} title="Example Response Body" />}
+              {resolvedSchema && exampleValue === undefined && <JsonViewer json={resolvedSchema} title="Response Schema" />}
+              {exampleValue === undefined && !resolvedSchema && <p className="text-sm text-muted-foreground">No example or schema provided for this response content.</p>}
             </CardContent>
           </Card>
         );
