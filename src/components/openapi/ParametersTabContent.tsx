@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { OpenApiSpec, OperationObject, ParameterObject, RequestBodyObject, isReferenceObject, SchemaObject, ReferenceObject } from '@/types/openapi/index';
+import { OpenApiSpec, OperationObject, ParameterObject, RequestBodyObject, isReferenceObject, SchemaObject, ReferenceObject, SecuritySchemeObject } from '@/types/openapi/index';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -51,12 +51,16 @@ const ParametersTabContent: React.FC<ParametersTabContentProps> = ({ operation, 
 
   const handleExecute = async () => {
     setApiResponse({ data: null, status: null, headers: null, error: null, loading: true });
+    console.log("Initiating API execution...");
 
     const serverUrl = openApiSpec.servers?.[0]?.url?.replace(/\/$/, '');
     if (!serverUrl) {
-      setApiResponse({ data: null, status: null, headers: null, error: 'No server URL defined in OpenAPI spec.', loading: false });
+      const errorMsg = 'No server URL defined in OpenAPI spec.';
+      console.error(errorMsg);
+      setApiResponse({ data: null, status: null, headers: null, error: errorMsg, loading: false });
       return;
     }
+    console.log("Server URL:", serverUrl);
 
     let processedPath = path;
     operation.parameters?.forEach(paramOrRef => {
@@ -65,6 +69,7 @@ const ParametersTabContent: React.FC<ParametersTabContentProps> = ({ operation, 
         processedPath = processedPath.replace(`{${param.name}}`, encodeURIComponent(parameterValues[param.name]));
       }
     });
+    console.log("Processed path:", processedPath);
 
     const queryParams = new URLSearchParams();
     operation.parameters?.forEach(paramOrRef => {
@@ -75,34 +80,68 @@ const ParametersTabContent: React.FC<ParametersTabContentProps> = ({ operation, 
     });
     const queryString = queryParams.toString();
     const finalUrl = `${serverUrl}${processedPath}${queryString ? `?${queryString}` : ''}`;
+    console.log("Final URL for fetch:", finalUrl);
 
     const requestHeaders = new Headers();
-    // Default headers - assuming JSON, can be made more dynamic
     if (operation.requestBody) {
-        requestHeaders.append('Content-Type', 'application/json');
+        requestHeaders.append('Content-Type', 'application/json'); // Assuming JSON, can be made dynamic
     }
     requestHeaders.append('Accept', 'application/json');
 
+    // Add regular header parameters
     operation.parameters?.forEach(paramOrRef => {
       const param = isReferenceObject(paramOrRef) ? resolveReference<ParameterObject>(paramOrRef.$ref, openApiSpec) : paramOrRef;
       if (param && param.in === 'header' && parameterValues[param.name]) {
         requestHeaders.append(param.name, parameterValues[param.name]);
       }
     });
+
+    // Add security scheme headers (e.g., API Keys)
+    if (operation.security) {
+      operation.security.forEach(secRequirement => {
+        Object.keys(secRequirement).forEach(schemeKey => {
+          const securitySchemeRef = openApiSpec.components?.securitySchemes?.[schemeKey];
+          if (securitySchemeRef) {
+            // Assuming security schemes are not references themselves for now, but direct objects
+            // If they can be references, this would need resolveReference
+            const securityScheme = isReferenceObject(securitySchemeRef)
+                ? resolveReference<SecuritySchemeObject>(securitySchemeRef.$ref, openApiSpec)
+                : securitySchemeRef;
+
+            if (securityScheme && securityScheme.type === 'apiKey' && securityScheme.in === 'header' && securityScheme.name) {
+              if (parameterValues[securityScheme.name]) {
+                requestHeaders.append(securityScheme.name, parameterValues[securityScheme.name]);
+                console.log(`Added API Key Header: ${securityScheme.name}`);
+              } else {
+                console.warn(`API Key ${securityScheme.name} specified in security scheme but no value provided.`);
+              }
+            }
+          }
+        });
+      });
+    }
     
     // Note: Cookie parameters are not directly settable in standard browser fetch requests this way.
     // They are managed by the browser. This part is a simplification.
     // operation.parameters?.forEach(paramOrRef => { ... cookie logic ... });
 
-
     let requestBodyContent: string | undefined = undefined;
     if (operation.requestBody && (method.toLowerCase() !== 'get' && method.toLowerCase() !== 'head')) {
-      const bodyInput = parameterValues['Request Body'];
+      const bodyInputKey = 'Request Body'; // Matches the 'name' used in renderParameter for requestBody
+      const bodyInput = parameterValues[bodyInputKey];
       if (bodyInput) {
-        // Assuming bodyInput is a JSON string for now
         requestBodyContent = bodyInput;
       }
     }
+    console.log("Request Body Content:", requestBodyContent);
+    
+    const headersForLog: Record<string, string> = {};
+    requestHeaders.forEach((value, key) => { headersForLog[key] = value; });
+    console.log('Executing API Call with details:');
+    console.log('Full URL:', finalUrl);
+    console.log('Method:', method.toUpperCase());
+    console.log('Headers:', headersForLog);
+    console.log('Body:', requestBodyContent || '(No body)');
 
     try {
       const response = await fetch(finalUrl, {
@@ -110,6 +149,28 @@ const ParametersTabContent: React.FC<ParametersTabContentProps> = ({ operation, 
         headers: requestHeaders,
         body: requestBodyContent,
       });
+
+      // Determine if there are any API key headers required by security schemes
+      const apiKeySecurityHeaders = [];
+      if (operation.security && openApiSpec.components?.securitySchemes) {
+        for (const secRequirement of operation.security) {
+          for (const schemeKey of Object.keys(secRequirement)) {
+            const securitySchemeRef = openApiSpec.components.securitySchemes[schemeKey];
+            if (securitySchemeRef) {
+                const securityScheme = isReferenceObject(securitySchemeRef)
+                    ? resolveReference<SecuritySchemeObject>(securitySchemeRef.$ref, openApiSpec)
+                    : securitySchemeRef;
+
+                if (securityScheme && securityScheme.type === 'apiKey' && securityScheme.in === 'header' && securityScheme.name) {
+                  // Avoid duplicates if multiple security requirements reference the same scheme
+                  if (!apiKeySecurityHeaders.find(h => h.name === securityScheme.name)) {
+                    apiKeySecurityHeaders.push(securityScheme);
+                  }
+                }
+            }
+          }
+        }
+      }
 
       const responseStatus = response.status;
       const responseHeadersObj: Record<string, string> = {};
@@ -124,9 +185,11 @@ const ParametersTabContent: React.FC<ParametersTabContentProps> = ({ operation, 
       }
 
       if (!response.ok) {
+        console.error(`API Call HTTP Error: ${responseStatus}`, responseData);
         setApiResponse({ data: responseData, status: responseStatus, headers: responseHeadersObj, error: `HTTP error! Status: ${responseStatus}`, loading: false });
         return;
       }
+      console.log("API Call successful, Status:", responseStatus);
       setApiResponse({ data: responseData, status: responseStatus, headers: responseHeadersObj, error: null, loading: false });
 
     } catch (e: any) {
@@ -180,7 +243,7 @@ const ParametersTabContent: React.FC<ParametersTabContentProps> = ({ operation, 
       inType = p.in;
     } else if (type === 'requestBody') { // param is RequestBodyObject
       const rb = param as RequestBodyObject;
-      name = 'Request Body'; // Placeholder name
+      name = 'Request Body'; // Placeholder name for state key
       description = rb.description;
       required = rb.required;
       // Assuming JSON content type for simplicity
@@ -196,7 +259,7 @@ const ParametersTabContent: React.FC<ParametersTabContentProps> = ({ operation, 
     return (
       <div key={name + (inType || '') + Math.random()} className="mb-6 p-4 border rounded-md bg-card">
         <div className="flex items-center mb-1">
-          <strong className="text-sm font-semibold text-foreground">{name}</strong>
+          <strong className="text-sm font-semibold text-foreground">{name === 'Request Body' ? 'Request Body' : name}</strong>
           {inType && <span className="ml-2 text-xs text-muted-foreground">({inType})</span>}
           {required && <span className="ml-2 text-red-500 text-xs">* required</span>}
         </div>
@@ -244,6 +307,28 @@ const ParametersTabContent: React.FC<ParametersTabContentProps> = ({ operation, 
   const headerParams = parameters.filter(p => (isReferenceObject(p) ? resolveReference<ParameterObject>(p.$ref, openApiSpec)?.in === 'header' : (p as ParameterObject).in === 'header'));
   const cookieParams = parameters.filter(p => (isReferenceObject(p) ? resolveReference<ParameterObject>(p.$ref, openApiSpec)?.in === 'cookie' : (p as ParameterObject).in === 'cookie'));
 
+  // Determine if there are any API key headers required by security schemes
+  const apiKeySecurityHeaders = [];
+  if (operation.security && openApiSpec.components?.securitySchemes) {
+    for (const secRequirement of operation.security) {
+      for (const schemeKey of Object.keys(secRequirement)) {
+        const securitySchemeRef = openApiSpec.components.securitySchemes[schemeKey];
+        if (securitySchemeRef) {
+            const securityScheme = isReferenceObject(securitySchemeRef)
+                ? resolveReference<SecuritySchemeObject>(securitySchemeRef.$ref, openApiSpec)
+                : securitySchemeRef;
+
+            if (securityScheme && securityScheme.type === 'apiKey' && securityScheme.in === 'header' && securityScheme.name) {
+              // Avoid duplicates if multiple security requirements reference the same scheme
+              if (!apiKeySecurityHeaders.find(h => h.name === securityScheme.name)) {
+                apiKeySecurityHeaders.push(securityScheme);
+              }
+            }
+        }
+      }
+    }
+  }
+
   return (
     <div className="space-y-6">
       {pathParams.length > 0 && (
@@ -264,6 +349,32 @@ const ParametersTabContent: React.FC<ParametersTabContentProps> = ({ operation, 
           <CardContent>{headerParams.map(p => renderParameter(p, 'parameter'))}</CardContent>
         </Card>
       )}
+      
+      {apiKeySecurityHeaders.length > 0 && (
+        <Card>
+          <CardHeader><CardTitle className="text-lg">Authentication Headers</CardTitle></CardHeader>
+          <CardContent>
+            {apiKeySecurityHeaders.map(secScheme => (
+              <div key={secScheme.name} className="mb-4 p-3 border rounded-md bg-card">
+                <Label htmlFor={secScheme.name} className="font-semibold text-sm flex items-center">
+                  {secScheme.name}
+                  <span className="ml-2 text-xs text-muted-foreground">(API Key in header)</span>
+                </Label>
+                {secScheme.description && <p className="text-xs text-muted-foreground mt-1 mb-1">{secScheme.description}</p>}
+                <Input
+                  id={secScheme.name}
+                  type="text"
+                  placeholder={`Enter value for ${secScheme.name}`}
+                  value={parameterValues[secScheme.name] || ''}
+                  onChange={(e) => handleInputChange(secScheme.name, e.target.value)}
+                  className="mt-1 text-sm"
+                />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       {cookieParams.length > 0 && (
         <Card>
           <CardHeader><CardTitle className="text-lg">Cookie Parameters</CardTitle></CardHeader>
